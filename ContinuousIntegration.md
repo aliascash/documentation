@@ -12,11 +12,11 @@ on [Docker](https://www.docker.com/) respectively Docker images.
 At the moment there are two different types of EC2 instances used:
 * A [c5d.large](https://aws.amazon.com/about-aws/whats-new/2018/05/introducing-amazon-ec2-c5d-instances/)
 instance for the Jenkins master.
-* Multiple [...](...) instances for the build slaves.
+* Multiple [t2.2xlarge](https://aws.amazon.com/ec2/instance-types/) instances for the build slaves.
 
 ### Jenkins master
 
-The Jenkins master instance is running on an c5d.large instance, which is running a
+The Jenkins master instance is running on an _c5d.large_ instance, which is running a
 [Debian Stretch AMI](https://wiki.debian.org/Cloud/AmazonEC2Image/Stretch) as
 operating system with Docker and [Docker-Compose](https://docs.docker.com/compose/)
 installed.
@@ -32,7 +32,7 @@ and customized it slightly to our needs:
 
 ### Jenkins build slaves
 
-The Jenkins build slaves where initially setup using a ??? instance, which was running
+The Jenkins build slaves where initially setup using a _t2.2xlarge_ instance, which was running
 also a Debian Stretch AMI. On this instance the following installations and modifications
 took place:
 * Activation of Stretch backports repository
@@ -54,27 +54,31 @@ Afterwards an own Spectrecoin-Builder AMI was created from this instance.
 
 To spawn build slave instances on demand we use the
 [Amazon EC2 Plugin](https://wiki.jenkins.io/display/JENKINS/Amazon+EC2+Plugin)
-and configured slave instances using the above mentioned AMI, instance type ???
-and label _docker_. So with this setup Jenkins starts new build slave instances
-if a buildjob requires build slaves with label _docker_ and shut them down after
-a certain idle timeout.
+on Jenkins and configured slave instances using the above mentioned AMI, instance 
+type _t2.2xlarge_ and label _docker_. So with this setup Jenkins starts new build 
+slave instances if a buildjob requires build slaves with label _docker_ and shut 
+them down after a certain idle timeout.
 
 ### Updating the CI
 
-Updating the master is a quite easy task.
-* Shutdown docker containers:
+Updating the CI master is now a quite easy task. The repository _docker-jenkins-nginx-letsencrypt_
+is cloned on the Master and all the following could be done as _admin_ user:
+* Shutdown Docker containers:
   ```
-  admin@ip-172-31-9-36:~$ cd docker-jenkins-nginx-letsencrypt/
-  admin@ip-172-31-9-36:~/docker-jenkins-nginx-letsencrypt$ docker-compose down
+  ~$ cd docker-jenkins-nginx-letsencrypt/
+  ~/docker-jenkins-nginx-letsencrypt$ docker-compose down
   ```
-* Update docker images:
+* Update Docker images:
   ```
-  admin@ip-172-31-9-36:~/docker-jenkins-nginx-letsencrypt$ docker-compose pull
+  ~/docker-jenkins-nginx-letsencrypt$ docker-compose pull
   ```
 * Start new Docker containers:
   ```
-  admin@ip-172-31-9-36:~/docker-jenkins-nginx-letsencrypt$ docker-compose up -d
+  ~/docker-jenkins-nginx-letsencrypt$ docker-compose up -d
   ```
+
+It took some minutes afterwards until everything is up&running again (start of four containers, 
+get letsencrypt certificates, start Jenkins master etc).
 
 ## General build setup
 
@@ -86,25 +90,37 @@ Also, each Repository on [Spectrecoin GitHub organization](https://github.com/sp
 which contains a so called [Jenkinsfile](https://jenkins.io/doc/book/pipeline/jenkinsfile/)
 will be automatically build. Details see below.
 
-### Build using Docker - Spectrecoin Docker images
+### Docker images
 
 To take advantage of the Docker concept and to improve build speed, the build itself and
-also the corresponding Docker images are split into a base- and a builder-part and an
+also the corresponding Docker images are split into a _base-_ and a _builder-part_ and a
 consolidating final Spectrecoin build.
 
 #### Spectre-Builder
 
 One thing to speedup the build is to split these build steps into an own build job, which
-build or setup the build system itself and so produce with every run the same result. So
-these steps where separated into the creation of dedicated [_builder images_](https://github.com/spectrecoin/spectre-builder)
+build or setup the build system itself. These job will only run, if there are changes on the
+build requirements or dependencies. So these steps where separated into the creation of 
+dedicated [_builder images_](https://github.com/spectrecoin/spectre-builder)
 for various Linux distributions, which contain all _buildtime_ dependencies.
 
 #### Spectre-Base
 
 With the same reason as the _builder images_ from before, [_base images_](https://github.com/spectrecoin/spectre-base)
 where created. These images contain all _runtime_ dependencies of Spectrecoin and they
-are not required for the _build_ of Spectrecoin. They are the basement for our ready to run
+are not required for the _build_ of Spectrecoin. So this job runs only in case of changed
+runtime dependencies and provides the basement for our ready to run
 [Docker images](https://hub.docker.com/u/spectreproject/dashboard/).
+
+#### The final Spectrecoin Docker image
+
+The main [Spectrecoin repository](https://github.com/spectrecoin/spectre) contains also
+Dockerfiles, which use the builder- and base-images to create the final deliveries. So the
+Docker build creates an instance of the builder-image and performs the real compilation of
+Spectrecoin. Afterwards an instance of the base-image is created and the previously built
+binaries are installed there. The final step is to push these Docker images to 
+[DockerHub](https://hub.docker.com/u/spectreproject/dashboard/), so they could directly 
+pulled from these users, which would let the wallet run as a Docker container.
 
 #### Spectre-Distribution & GitHub-Uploader
 
