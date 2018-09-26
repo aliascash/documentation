@@ -5,9 +5,10 @@ This document describes the whole Continuous Integration setup of Spectrecoin.
 ## General system setup
 
 The whole CI system is running on [Amazon AWS](https://aws.amazon.com/) and is mostly based
-on [Docker](https://www.docker.com/) respectively Docker images.
+on [Docker](https://www.docker.com/) respectively Docker images. As build orchestrator we use
+[Jenkins](https://jenkins-ci.org).
 
-## Jenkins setup
+## Build hosts setup
 
 At the moment there are two different types of EC2 instances used:
 * A [c5d.large](https://aws.amazon.com/about-aws/whats-new/2018/05/introducing-amazon-ec2-c5d-instances/)
@@ -16,7 +17,7 @@ instance for the Jenkins master.
 
 ### Jenkins master
 
-The Jenkins master instance is running on an _c5d.large_ instance, which is running a
+The Jenkins master is running on an _c5d.large_ instance, which is using a
 [Debian Stretch AMI](https://wiki.debian.org/Cloud/AmazonEC2Image/Stretch) as
 operating system with Docker and [Docker-Compose](https://docs.docker.com/compose/)
 installed.
@@ -62,7 +63,7 @@ them down after a certain idle timeout.
 ### Updating the CI
 
 Updating the CI master is now a quite easy task. The repository _docker-jenkins-nginx-letsencrypt_
-is cloned on the Master and all the following could be done as _admin_ user:
+is cloned on the Master host and all the following could be done as _admin_ user:
 * Shutdown Docker containers:
   ```
   ~$ cd docker-jenkins-nginx-letsencrypt/
@@ -82,7 +83,7 @@ get letsencrypt certificates, start Jenkins master etc).
 
 ## General build setup
 
-The Spectrecoin Linux build is mostly based on Docker images. This enables the possibility,
+The Spectrecoin Linux build is mostly based on Docker. This enables the possibility,
 to test the build itself easily on different base systems respectively different Linux
 distributions. As default distribution _Debian Stretch_ is used.
 
@@ -99,7 +100,7 @@ consolidating final Spectrecoin build.
 #### Spectre-Builder
 
 One thing to speedup the build is to split these build steps into an own build job, which
-build or setup the build system itself. These job will only run, if there are changes on the
+build or setup the build system itself. This job will only run, if there are changes on the
 build requirements or dependencies. So these steps where separated into the creation of 
 dedicated [_builder images_](https://github.com/spectrecoin/spectre-builder)
 for various Linux distributions, which contain all _buildtime_ dependencies.
@@ -108,8 +109,8 @@ for various Linux distributions, which contain all _buildtime_ dependencies.
 
 With the same reason as the _builder images_ from before, [_base images_](https://github.com/spectrecoin/spectre-base)
 where created. These images contain all _runtime_ dependencies of Spectrecoin and they
-are not required for the _build_ of Spectrecoin. So this job runs only in case of changed
-runtime dependencies and provides the basement for our ready to run
+are not required for the plain _build_ of Spectrecoin. So this job runs only in case of
+changed runtime dependencies and provides the basement for our ready to run
 [Docker images](https://hub.docker.com/u/spectreproject/dashboard/).
 
 #### The final Spectrecoin Docker image
@@ -142,10 +143,29 @@ to the corresponding release tag on the Spectrecoin release section.
 
 ### Jenkins Buildjobs
 
-The build job configuration on Jenkins is mostly based on a so called _GitHub Organizsation Scanner_.
-This job type is configured with the URL to the GitHub organization and scans all existing repositories.
+The major part of the build job configuration on Jenkins is based on a so called
+_GitHub Organizsation Scanner_. The scanner is configured with the URL to the GitHub organization
+and scans all existing repositories.
+
 On each repository each branch is checked for the existence of a _Jenkinsfile_ and if found, a dedicated
 buildjob for this branch is created. So there is no administration necessary to setup buildjobs in case
 a new branch is created on one of the Git repositories as Jenkins handels them by himself. The jobs will
 of course be removed, if the corrsponding branch is removed like after a merge of the branch into
 another one.
+
+#### GitHub-Jenkins-Interaction
+
+For the interaction between GitHub and Jenkins the [GitHub-Plugin](https://wiki.jenkins-ci.org/display/JENKINS/GitHub+Plugin)
+is used. This enables two way communication between GitHub and Jenkins with the following
+major advantages:
+* To trigger a buildjob it is not necessary to let Jenkins poll GitHub for changes. The GitHub plugin
+installs a webhook on each Repository on GitHub, so GitHub itself triggers the buildjob after i. e.
+something was pushed to a repository. This increases build speed and reduces feedback time to the
+developers, as there is no wait time until the next poll because the build job is instantly triggered
+by GitHub.
+* If a buildjob was finished, the corresponding hash will be marked with the build status _failed_ or
+_successful_. So it is directly on the GitHub repository webpage visible, if the build is green or not.
+* If a pull request is opened, the result of this pull request is also build right before it could be
+approved. Git makes this possible by applying the desired merge of the pull request and performing the
+build to check if the build itself is working. So if the build fails, the pull request cannot be approved
+respectively merged.
